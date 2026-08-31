@@ -1,4 +1,5 @@
-// schema.prisma
+// DevPort — Prisma Schema
+// Modular monolith database design
 
 generator client {
   provider = "prisma-client-js"
@@ -8,46 +9,424 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─────────────────────────────────────────────
+// AUTH — Auth.js (NextAuth v5) required models
+// ─────────────────────────────────────────────
+
 model User {
-  id        String    @id @default(uuid())
-  email     String    @unique
-  name      String?
-  projects  Project[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+
+  projects      Project[]
+  integrations  Integration[]
+  apiKeys       ApiKey[]
+  notifications Notification[]
+
+  @@index([email])
 }
 
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────
+// PROJECT — Core domain entity
+// ─────────────────────────────────────────────
+
 model Project {
-  id          String      @id @default(uuid())
-  ownerId     String
-  owner       User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  
-  slug        String      @unique
-  title       String
-  summary     String      // Short description for cards/header
-  overview    String      @db.Text // Full project description
-  
-  githubUrl   String?
-  liveUrl     String?
-  
-  status      ProjectStatus @default(DRAFT)
-  visibility  ProjectVisibility @default(PRIVATE)
-  featured    Boolean     @default(false)
-  
-  media       Media[]
+  id      String @id @default(cuid())
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Identification
+  slug  String @unique
+  title String
+
+  // Content
+  summary      String  // Short description for cards/header
+  overview     String  @db.Text // Full project description
+  architecture String? @db.Text // Architecture notes
+
+  // Status & Visibility
+  status     ProjectStatus     @default(DRAFT)
+  visibility ProjectVisibility @default(PRIVATE)
+  featured   Boolean           @default(false)
+
+  // Sync tracking
+  syncStatus   SyncStatus @default(IDLE)
+  lastSyncedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  features    ProjectFeature[]
   techStacks  ProjectTechStack[]
-  buildNotes  BuildNote[]
-  
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  links       ProjectLink[]
+  media       Media[]
+  sources     ProjectSource[]
+
+  repository  GitHubRepository?
+  deployment  Deployment?
+  apiDocs     ApiDocumentation?
+
+  syncEvents  SyncEvent[]
 
   @@index([ownerId])
   @@index([slug])
+  @@index([status, visibility])
 }
+
+model ProjectFeature {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  order       Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model ProjectLink {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  label String
+  url   String
+  type  LinkType @default(EXTERNAL)
+
+  @@index([projectId])
+}
+
+// Centralized tech stack table to avoid duplication (React, TypeScript, etc.)
+model TechStack {
+  id      String @id @default(cuid())
+  name    String @unique
+  iconUrl String?
+
+  projects ProjectTechStack[]
+}
+
+model ProjectTechStack {
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  techStackId String
+  techStack   TechStack @relation(fields: [techStackId], references: [id], onDelete: Cascade)
+
+  source InformationSource @default(USER)
+  order  Int               @default(0)
+
+  @@id([projectId, techStackId])
+}
+
+// Track where each piece of project information came from
+model ProjectSource {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  type        InformationSource
+  externalId  String? // e.g. GitHub repo node ID
+  externalUrl String?
+  rawData     Json?   // Store raw source data for re-processing
+  syncedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, type])
+  @@index([projectId])
+  @@index([type])
+}
+
+// ─────────────────────────────────────────────
+// MEDIA
+// ─────────────────────────────────────────────
+
+model Media {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  url      String // Cloudinary URL or other CDN
+  publicId String // For CDN deletion/management
+  type     MediaType @default(IMAGE)
+  altText  String?
+  order    Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+// ─────────────────────────────────────────────
+// GITHUB INTEGRATION
+// ─────────────────────────────────────────────
+
+model Integration {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider IntegrationProvider
+  status   IntegrationStatus   @default(ACTIVE)
+
+  // Encrypted credentials — never expose raw
+  accessTokenHash  String? @db.Text
+  refreshTokenHash String? @db.Text
+  tokenExpiresAt   DateTime?
+
+  // Provider-specific metadata
+  providerAccountId   String? // e.g. GitHub user ID
+  providerAccountName String? // e.g. GitHub username
+  providerAccountUrl  String?
+  scopes              String? // comma-separated OAuth scopes
+
+  // Webhook
+  webhookId     String?
+  webhookSecret String? @db.Text // Encrypted webhook secret
+
+  connectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  repositories GitHubRepository[]
+
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+model GitHubRepository {
+  id            String      @id @default(cuid())
+  integrationId String
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  projectId     String?     @unique
+  project       Project?    @relation(fields: [projectId], references: [id])
+
+  // GitHub identifiers
+  githubId   Int    @unique // GitHub repo node ID (number)
+  fullName   String @unique // e.g. "user/repo-name"
+  name       String
+  owner      String
+
+  // Metadata
+  description    String?   @db.Text
+  defaultBranch  String    @default("main")
+  language       String?   // Primary language
+  topics         String[]  // Array of topic strings
+  isPrivate      Boolean   @default(false)
+  url            String
+  cloneUrl       String
+  lastPushedAt   DateTime?
+
+  // Analysis state
+  importStatus RepositoryImportStatus @default(PENDING)
+  analyzedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([integrationId])
+}
+
+// ─────────────────────────────────────────────
+// DEPLOYMENT
+// ─────────────────────────────────────────────
+
+model Deployment {
+  id        String  @id @default(cuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  provider       DeploymentProvider
+  providerProjectId String?    // e.g. Vercel project ID
+  productionUrl  String?
+  deploymentUrl  String?
+  status         DeploymentStatus @default(UNKNOWN)
+  environment    String?          @default("production")
+  lastDeployedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// API DOCUMENTATION (OpenAPI/Swagger)
+// ─────────────────────────────────────────────
+
+model ApiDocumentation {
+  id        String  @id @default(cuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title       String
+  version     String?
+  description String?  @db.Text
+  baseUrl     String?
+
+  // Store the raw spec for re-processing
+  rawSpec     Json?
+  specVersion String? // "3.0.0", "2.0", etc.
+
+  endpoints ApiEndpoint[]
+
+  importedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ApiEndpoint {
+  id             String           @id @default(cuid())
+  apiDocumentationId String
+  apiDocumentation   ApiDocumentation @relation(fields: [apiDocumentationId], references: [id], onDelete: Cascade)
+
+  method      HttpMethod
+  path        String
+  summary     String?
+  description String?  @db.Text
+  tags        String[]
+  deprecated  Boolean  @default(false)
+
+  // JSON schemas
+  requestSchema  Json?
+  responseSchema Json?
+  parameters     Json?
+
+  order Int @default(0)
+
+  @@index([apiDocumentationId])
+}
+
+// ─────────────────────────────────────────────
+// API KEYS
+// ─────────────────────────────────────────────
+
+model ApiKey {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  keyHash   String @unique // bcrypt hash of the full key
+  keyPrefix String // First 8 chars for display (e.g. "dp_live_")
+  scopes    String[] @default(["projects:read"])
+
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([keyHash])
+}
+
+// ─────────────────────────────────────────────
+// SYNCHRONIZATION
+// ─────────────────────────────────────────────
+
+model SyncEvent {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  source    InformationSource
+  status    SyncEventStatus
+  triggeredBy SyncTrigger @default(MANUAL)
+
+  changesDetected Boolean   @default(false)
+  errorMessage    String?   @db.Text
+  metadata        Json?     // Additional context about what changed
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([projectId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type    NotificationType
+  title   String
+  message String
+  data    Json?   // Extra data (e.g. projectId, repositoryName)
+
+  read      Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
 
 enum ProjectStatus {
   DRAFT
+  READY
   PUBLISHED
+  ARCHIVED
 }
 
 enum ProjectVisibility {
@@ -55,22 +434,10 @@ enum ProjectVisibility {
   PRIVATE
 }
 
-// Separate Media model because a project can have multiple screenshots/videos
-model Media {
-  id          String    @id @default(uuid())
-  projectId   String
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  url         String    // Cloudinary URL
-  publicId    String    // Cloudinary Public ID for deletion/management
-  type        MediaType @default(IMAGE)
-  altText     String?
-  order       Int       @default(0) // For displaying galleries in a specific order
-  
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@index([projectId])
+enum SyncStatus {
+  IDLE
+  SYNCING
+  ERROR
 }
 
 enum MediaType {
@@ -78,36 +445,90 @@ enum MediaType {
   VIDEO
 }
 
-// Centralized TechStack table to avoid duplicating technologies (e.g., React, Next.js)
-model TechStack {
-  id          String    @id @default(uuid())
-  name        String    @unique // e.g., "React", "TypeScript"
-  iconUrl     String?
-  projects    ProjectTechStack[]
+enum LinkType {
+  GITHUB
+  LIVE
+  API
+  DOCS
+  DEMO
+  SOCIAL
+  EXTERNAL
 }
 
-// Junction table for Many-to-Many relationship between Project and TechStack
-model ProjectTechStack {
-  projectId   String
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  techStackId String
-  techStack   TechStack @relation(fields: [techStackId], references: [id], onDelete: Cascade)
-
-  @@id([projectId, techStackId])
+enum InformationSource {
+  USER
+  GITHUB
+  README
+  OPENAPI
+  VERCEL
+  AI
+  SYSTEM
 }
 
-// Separate BuildNote model as it represents distinct log entries or architecture decisions over time
-model BuildNote {
-  id          String    @id @default(uuid())
-  projectId   String
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
-  title       String
-  content     String    @db.Text
-  date        DateTime  @default(now())
-  
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+enum IntegrationProvider {
+  GITHUB
+  VERCEL
+}
 
-  @@index([projectId])
+enum IntegrationStatus {
+  ACTIVE
+  DISCONNECTED
+  ERROR
+}
+
+enum RepositoryImportStatus {
+  PENDING
+  ANALYZING
+  COMPLETE
+  FAILED
+}
+
+enum DeploymentProvider {
+  VERCEL
+  RENDER
+  RAILWAY
+  NETLIFY
+  OTHER
+}
+
+enum DeploymentStatus {
+  READY
+  BUILDING
+  ERROR
+  CANCELED
+  UNKNOWN
+}
+
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  PATCH
+  DELETE
+  HEAD
+  OPTIONS
+}
+
+enum SyncEventStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum SyncTrigger {
+  MANUAL
+  WEBHOOK
+  SCHEDULED
+}
+
+enum NotificationType {
+  REPOSITORY_DETECTED
+  IMPORT_COMPLETE
+  IMPORT_FAILED
+  SYNC_COMPLETE
+  SYNC_FAILED
+  OPENAPI_DETECTED
+  DEPLOYMENT_UPDATED
+  SYSTEM
 }
