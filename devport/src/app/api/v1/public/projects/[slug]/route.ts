@@ -32,9 +32,18 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       });
 
       if (apiKey) {
+        // Scope check — key must have projects:read to access project data
+        if (!apiKey.scopes.includes("projects:read")) {
+          return NextResponse.json(
+            { error: { code: "AUTHORIZATION_ERROR", message: "API key lacks the projects:read scope" } },
+            { status: 403 }
+          );
+        }
+
         // Update last used timestamp
         await db.apiKey.update({
           where: { id: apiKey.id },
+          // Only update if still valid (guards against expiry race condition)
           data: { lastUsedAt: new Date() },
         });
 

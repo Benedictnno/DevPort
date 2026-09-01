@@ -12,6 +12,7 @@ import {
   NotFoundError,
   AuthorizationError,
   ConflictError,
+  ValidationError,
 } from "@/shared/errors";
 import type {
   CreateProjectInput,
@@ -92,6 +93,22 @@ export async function createProject(
   return toProjectDto(project);
 }
 
+
+// Infer deployment provider from production URL domain
+function detectDeploymentProvider(url: string): string {
+  try {
+    const { hostname } = new URL(url);
+    if (hostname.endsWith(".vercel.app") || hostname.includes("vercel")) return "VERCEL";
+    if (hostname.endsWith(".railway.app")) return "RAILWAY";
+    if (hostname.endsWith(".fly.dev")) return "FLY";
+    if (hostname.endsWith(".render.com") || hostname.endsWith(".onrender.com")) return "RENDER";
+    if (hostname.endsWith(".netlify.app") || hostname.endsWith(".netlify.com")) return "NETLIFY";
+  } catch {
+    // URL parsing failed — fall through to MANUAL
+  }
+  return "MANUAL";
+}
+
 /**
  * Update an existing project. Only the owner may update.
  */
@@ -107,16 +124,19 @@ export async function updateProject(
 
   if (input.productionUrl !== undefined) {
     if (input.productionUrl && input.productionUrl.trim() !== "") {
+      const trimmedUrl = input.productionUrl.trim();
+      const provider = detectDeploymentProvider(trimmedUrl);
       await db.deployment.upsert({
         where: { projectId: project.id },
         create: {
           projectId: project.id,
-          provider: "VERCEL",
-          productionUrl: input.productionUrl.trim(),
+          provider: provider as never,
+          productionUrl: trimmedUrl,
           status: "READY",
         },
         update: {
-          productionUrl: input.productionUrl.trim(),
+          provider: provider as never,
+          productionUrl: trimmedUrl,
           status: "READY",
         },
       });
@@ -156,6 +176,18 @@ export async function publishProject(
 
   if (project.ownerId !== userId) {
     throw new AuthorizationError();
+  }
+
+  // Readiness gate: require analysis to have completed and a non-empty summary
+  if (project.status === "DRAFT") {
+    throw new ValidationError(
+      "Project must finish analysis before publishing. Use Re-sync to trigger analysis, then try again."
+    );
+  }
+  if (!project.summary || project.summary.trim() === "") {
+    throw new ValidationError(
+      "A project summary is required before publishing. Please add a summary and try again."
+    );
   }
 
   const updated = await projectRepository.update(project.id, {

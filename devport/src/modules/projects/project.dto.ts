@@ -44,6 +44,17 @@ export interface RepositoryDto {
   importStatus: string;
 }
 
+// Public subset of RepositoryDto — excludes internal/sensitive fields
+export interface PublicRepositoryDto {
+  fullName: string;
+  name: string;
+  owner: string;
+  url: string;
+  language: string | null;
+  topics: string[];
+  lastPushedAt: string | null;
+}
+
 export interface DeploymentDto {
   provider: string;
   productionUrl: string | null;
@@ -92,7 +103,10 @@ export interface ProjectDto {
 }
 
 // Public DTO — a subset of ProjectDto for unauthenticated access
-export type PublicProjectDto = Omit<ProjectDto, "id" | "visibility" | "syncStatus" | "lastSyncedAt">;
+// Strips internal fields and sensitive repository metadata
+export interface PublicProjectDto extends Omit<ProjectDto, "id" | "visibility" | "syncStatus" | "lastSyncedAt" | "repository"> {
+  repository: PublicRepositoryDto | null;
+}
 
 // Summary DTO — used in list views
 export interface ProjectSummaryDto {
@@ -193,8 +207,22 @@ export function toProjectDto(project: ProjectWithRelations): ProjectDto {
 
 export function toPublicProjectDto(project: ProjectWithRelations): PublicProjectDto {
   const dto = toProjectDto(project);
-  const { id: _id, visibility: _vis, syncStatus: _ss, lastSyncedAt: _ls, ...publicFields } = dto;
-  return publicFields;
+  const { id: _id, visibility: _vis, syncStatus: _ss, lastSyncedAt: _ls, repository, ...rest } = dto;
+
+  // Explicitly construct the public repository shape — never expose isPrivate or importStatus
+  const publicRepository: PublicRepositoryDto | null = repository
+    ? {
+        fullName: repository.fullName,
+        name: repository.name,
+        owner: repository.owner,
+        url: repository.url,
+        language: repository.language,
+        topics: repository.topics,
+        lastPushedAt: repository.lastPushedAt,
+      }
+    : null;
+
+  return { ...rest, repository: publicRepository };
 }
 
 export function toProjectSummaryDto(project: ProjectSummary): ProjectSummaryDto {

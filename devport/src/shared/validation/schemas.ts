@@ -1,6 +1,15 @@
 import { z } from "zod";
 export { validate } from "./validate";
 
+// ─── Reserved Slugs ────────────────────────────────────────────────────────
+// These conflict with Next.js app routes and must not be used as project slugs
+const RESERVED_SLUGS = new Set([
+  "api", "auth", "dashboard", "public", "admin", "settings",
+  "login", "signup", "register", "logout", "profile", "account",
+  "projects", "integrations", "keys", "docs", "help", "support",
+  "about", "contact", "privacy", "terms", "404", "500",
+]);
+
 // ─── Project Schemas ───────────────────────────────────────────────────────
 
 export const createProjectSchema = z.object({
@@ -12,7 +21,15 @@ export const createProjectSchema = z.object({
     .regex(
       /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
       "Slug must be lowercase alphanumeric with hyphens"
-    ),
+    )
+    .superRefine((slug, ctx) => {
+      if (RESERVED_SLUGS.has(slug)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `"${slug}" is a reserved slug and cannot be used`,
+        });
+      }
+    }),
   summary: z.string().min(1, "Summary is required").max(300),
   overview: z.string().max(10000).optional().default(""),
   architecture: z.string().max(10000).optional(),
@@ -65,7 +82,14 @@ export const createApiKeySchema = z.object({
     .min(1)
     .optional()
     .default(["projects:read"]),
-  expiresAt: z.string().datetime().optional(),
+  expiresAt: z
+    .string()
+    .datetime()
+    .refine(
+      (val) => new Date(val) > new Date(),
+      { message: "Expiry date must be in the future" }
+    )
+    .optional(),
 });
 
 // ─── GitHub Integration Schemas ────────────────────────────────────────────

@@ -89,12 +89,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate a slug from the repo name
+    // Generate a slug from the repo name, with collision handling
     const baseSlug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     let slug = baseSlug;
     let attempt = 0;
+    const MAX_SLUG_ATTEMPTS = 10;
     while (await projectRepository.slugExists(slug)) {
       attempt++;
+      if (attempt > MAX_SLUG_ATTEMPTS) {
+        // Fall back to random suffix to break out of pathological collisions
+        slug = `${baseSlug}-${Math.random().toString(36).slice(2, 7)}`;
+        break;
+      }
       slug = `${baseSlug}-${attempt}`;
     }
 

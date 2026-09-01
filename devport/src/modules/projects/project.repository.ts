@@ -140,10 +140,18 @@ export class ProjectRepository {
     projectId: string,
     links: Array<{ label: string; url: string; type?: string }>
   ) {
+    // De-duplicate by URL — keep the first occurrence of each URL
+    const seen = new Set<string>();
+    const uniqueLinks = links.filter((l) => {
+      if (seen.has(l.url)) return false;
+      seen.add(l.url);
+      return true;
+    });
+
     return db.$transaction([
       db.projectLink.deleteMany({ where: { projectId } }),
       db.projectLink.createMany({
-        data: links.map((l) => ({
+        data: uniqueLinks.map((l) => ({
           projectId,
           label: l.label,
           url: l.url,

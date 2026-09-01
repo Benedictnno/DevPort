@@ -126,6 +126,14 @@ export class GitHubAdapter implements SourceControlProvider {
             !path.startsWith(".next/")
         );
     } catch (error) {
+      // Rate limit or auth failure — surface as retryable error
+      if (isRateLimitError(error)) {
+        throw new IntegrationError(
+          `GitHub rate limit exceeded while listing files for "${fullName}". Retry after the limit resets.`,
+          "github"
+        );
+      }
+      // Other errors (e.g. empty repo, tree too large) — log and return empty
       logger.warn(`Failed to list files for "${fullName}"`, {
         error: errorMessage(error),
       });
@@ -224,6 +232,16 @@ function isNotFoundError(error: unknown): boolean {
     error !== null &&
     "status" in error &&
     (error as { status: number }).status === 404
+  );
+}
+
+function isRateLimitError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    ((error as { status: number }).status === 403 ||
+      (error as { status: number }).status === 429)
   );
 }
 

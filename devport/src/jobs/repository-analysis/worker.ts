@@ -30,6 +30,20 @@ export async function executeRepositoryAnalysis(
     repository: githubFullName,
   });
 
+  // Guard against concurrent analysis runs
+  const currentProject = await db.project.findUnique({
+    where: { id: projectId },
+    select: { syncStatus: true },
+  });
+  if (!currentProject) {
+    logger.warn("Project not found, skipping analysis", { projectId });
+    return;
+  }
+  if (currentProject.syncStatus === "SYNCING") {
+    logger.warn("Analysis already in progress, skipping duplicate run", { projectId });
+    return;
+  }
+
   // Update project sync status to SYNCING
   await db.project.update({
     where: { id: projectId },
@@ -62,12 +76,20 @@ export async function executeRepositoryAnalysis(
     const readme = await adapter.getReadme(githubFullName, defaultBranch);
     const readmeContent = readme?.content ?? null;
 
-    // 4. Fetch package.json if present
+    // 4. Fetch package.json — prefer root, then shallowest found (monorepo support)
     if (onProgress) await onProgress(40);
     let packageJsonContent: string | null = null;
-    if (filePaths.includes("package.json")) {
-      const pkgFile = await adapter.getFile(githubFullName, "package.json", defaultBranch);
+    const packageJsonCandidates = filePaths
+      .filter((p) => p === "package.json" || p.endsWith("/package.json"))
+      // Sort by path depth (fewer slashes = closer to root)
+      .sort((a, b) => (a.split("/").length - b.split("/").length));
+    if (packageJsonCandidates.length > 0) {
+      const pkgPath = packageJsonCandidates[0]; // shallowest (root preferred)
+      const pkgFile = await adapter.getFile(githubFullName, pkgPath, defaultBranch);
       packageJsonContent = pkgFile?.content ?? null;
+      if (pkgPath !== "package.json") {
+        logger.info(`Using package.json from monorepo path: ${pkgPath}`, { projectId });
+      }
     }
 
     // 5. Fetch and parse OpenAPI specification if detected
@@ -134,8 +156,18 @@ export async function executeRepositoryAnalysis(
     const repoName = githubFullName.split("/")[1];
 
     if (aiResult) {
-      if (aiResult.title) updates.title = aiResult.title;
-      if (aiResult.summary) updates.summary = aiResult.summary;
+      // Only apply AI title if the user hasn't already customised it
+      // (i.e. it still matches the raw repo name set on import)
+      const titleIsDefault =
+        project.title === repoName ||
+        project.title === repoName.replace(/-/g, " ") ||
+        project.title.toLowerCase() === repoName.toLowerCase();
+      if (aiResult.title && titleIsDefault) updates.title = aiResult.title;
+
+      // Only apply AI summary if still at the stub value set during import
+      const summaryIsDefault = project.summary === `${repoName} repository` || project.summary === "";
+      if (aiResult.summary && summaryIsDefault) updates.summary = aiResult.summary;
+
       if (aiResult.overview) updates.overview = aiResult.overview;
       if (aiResult.architecture) updates.architecture = aiResult.architecture;
     }
@@ -249,14 +281,26 @@ export async function executeRepositoryAnalysis(
       error: error instanceof Error ? error.message : String(error),
     });
 
+    // Safely update failure state — project/repo may have been deleted mid-flight
+    const isRecordMissing = (e: unknown) =>
+      e instanceof Error &&
+      "code" in e &&
+      (e as { code: string }).code === "P2025";
+
     await db.gitHubRepository.update({
       where: { id: repositoryId },
       data: { importStatus: "FAILED" },
+    }).catch((e) => {
+      if (!isRecordMissing(e)) throw e;
+      logger.warn("Repository row missing during error cleanup", { repositoryId });
     });
 
     await db.project.update({
       where: { id: projectId },
       data: { syncStatus: "ERROR" },
+    }).catch((e) => {
+      if (!isRecordMissing(e)) throw e;
+      logger.warn("Project row missing during error cleanup — likely deleted mid-analysis", { projectId });
     });
 
     throw error;
