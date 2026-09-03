@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Code2 } from "lucide-react";
@@ -23,7 +24,9 @@ export default function SignInPage() {
           </p>
         </div>
 
-        <SignInForm />
+        <Suspense fallback={<div className="h-48 flex items-center justify-center text-sm text-muted-foreground">Loading...</div>}>
+          <SignInForm />
+        </Suspense>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
           Don&apos;t have an account?{" "}
