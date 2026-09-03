@@ -175,30 +175,40 @@ export class ProjectRepository {
     const uniqueTechs = [...new Set(validTechs)];
 
     return db.$transaction(async (tx) => {
-      // Remove existing
+      // Remove existing project<->tech links
       await tx.projectTechStack.deleteMany({ where: { projectId } });
 
-      // Upsert each tech and link
-      for (let i = 0; i < uniqueTechs.length; i++) {
-        const name = uniqueTechs[i];
-        const tech = await tx.techStack.upsert({
-          where: { name },
-          create: { name },
-          update: {},
-        });
-        if (tech?.id) {
-          await tx.projectTechStack.create({
-            data: {
-              projectId,
-              techStackId: tech.id,
-              source: source as never,
-              order: i,
-            },
-          });
-        }
+      if (uniqueTechs.length === 0) return;
+
+      // Batch-create any new TechStack rows (skip duplicates for existing names)
+      await tx.techStack.createMany({
+        data: uniqueTechs.map((name) => ({ name })),
+        skipDuplicates: true,
+      });
+
+      // Fetch the IDs for all relevant tech stacks in one query
+      const techRows = await tx.techStack.findMany({
+        where: { name: { in: uniqueTechs } },
+        select: { id: true, name: true },
+      });
+
+      const nameToId = new Map(techRows.map((t) => [t.name, t.id]));
+
+      // Batch-create all junction rows
+      const junctionRows = uniqueTechs
+        .map((name, i) => {
+          const techStackId = nameToId.get(name);
+          if (!techStackId) return null;
+          return { projectId, techStackId, source: source as never, order: i };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
+
+      if (junctionRows.length > 0) {
+        await tx.projectTechStack.createMany({ data: junctionRows });
       }
     });
   }
+
 
   // ─── API Documentation ──────────────────────────────────────────────────
 

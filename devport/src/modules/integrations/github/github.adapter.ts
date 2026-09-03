@@ -25,6 +25,12 @@ export class GitHubAdapter implements SourceControlProvider {
       });
       return data.map(mapOctokitRepo);
     } catch (error) {
+      if (isUnauthorizedError(error)) {
+        throw new IntegrationError(
+          "GitHub access token is expired or revoked. Please reconnect your GitHub account.",
+          "github"
+        );
+      }
       throw new IntegrationError(
         `Failed to list GitHub repositories: ${errorMessage(error)}`,
         "github"
@@ -232,6 +238,15 @@ function isNotFoundError(error: unknown): boolean {
     error !== null &&
     "status" in error &&
     (error as { status: number }).status === 404
+  );
+}
+
+function isUnauthorizedError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    (error as { status: number }).status === 401
   );
 }
 

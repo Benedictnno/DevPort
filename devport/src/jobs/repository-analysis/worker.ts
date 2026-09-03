@@ -30,30 +30,31 @@ export async function executeRepositoryAnalysis(
     repository: githubFullName,
   });
 
-  // Guard against concurrent analysis runs
-  const currentProject = await db.project.findUnique({
-    where: { id: projectId },
-    select: { syncStatus: true },
+  // Guard against concurrent analysis runs — use the repository's importStatus
+  // (not the project's syncStatus, which is set to SYNCING during creation).
+  const currentRepository = await db.gitHubRepository.findUnique({
+    where: { id: repositoryId },
+    select: { importStatus: true },
   });
-  if (!currentProject) {
-    logger.warn("Project not found, skipping analysis", { projectId });
+  if (!currentRepository) {
+    logger.warn("Repository not found, skipping analysis", { repositoryId });
     return;
   }
-  if (currentProject.syncStatus === "SYNCING") {
-    logger.warn("Analysis already in progress, skipping duplicate run", { projectId });
+  if (currentRepository.importStatus === "ANALYZING") {
+    logger.warn("Analysis already in progress, skipping duplicate run", { repositoryId });
     return;
   }
 
-  // Update project sync status to SYNCING
-  await db.project.update({
-    where: { id: projectId },
-    data: { syncStatus: "SYNCING" },
-  });
-
-  // Update repository import status to ANALYZING
+  // Mark as in-flight immediately
   await db.gitHubRepository.update({
     where: { id: repositoryId },
     data: { importStatus: "ANALYZING" },
+  });
+
+  // Ensure the project sync status is SYNCING
+  await db.project.update({
+    where: { id: projectId },
+    data: { syncStatus: "SYNCING" },
   });
 
   try {
