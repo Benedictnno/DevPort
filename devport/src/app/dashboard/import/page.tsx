@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { getGitHubIntegrationStatus } from "@/modules/integrations/github/github.service";
 import { GitHubRepositoryPicker } from "@/components/github/repository-picker";
 import { ConnectGitHubButton } from "@/components/github/connect-github-button";
@@ -11,7 +12,10 @@ export const metadata: Metadata = {
 
 export default async function ImportPage() {
   const session = await auth();
-  const githubStatus = await getGitHubIntegrationStatus(session!.user.id);
+  if (!session?.user?.id) {
+    redirect("/sign-in");
+  }
+  const githubStatus = await getGitHubIntegrationStatus(session.user.id);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">

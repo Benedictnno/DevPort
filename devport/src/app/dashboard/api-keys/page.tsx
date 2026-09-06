@@ -1,8 +1,9 @@
 import { auth } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { listApiKeys } from "@/modules/api-keys/api-key.service";
 import { ApiKeyManager } from "@/components/api-keys/api-key-manager";
 import type { Metadata } from "next";
-import { Terminal, Shield, Key } from "lucide-react";
+import { Terminal, Key } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "API Keys & Access Control",
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
 
 export default async function ApiKeysPage() {
   const session = await auth();
-  const keys = await listApiKeys(session!.user.id);
+  if (!session?.user?.id) {
+    redirect("/sign-in");
+  }
+  const keys = await listApiKeys(session.user.id);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">

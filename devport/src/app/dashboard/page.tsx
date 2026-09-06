@@ -1,37 +1,37 @@
 import { auth } from "@/lib/auth";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   GitBranch,
   Plus,
   ArrowUpRight,
   FolderOpen,
   CheckCircle2,
-  AlertCircle,
-  Clock,
   Layers,
   FileCode2,
   Globe,
   Radio,
   Server,
-  Zap,
 } from "lucide-react";
 import { listProjects } from "@/modules/projects/project.service";
 import { getGitHubIntegrationStatus } from "@/modules/integrations/github/github.service";
 
 export default async function DashboardPage() {
   const session = await auth();
-  const userId = session!.user.id;
+  if (!session?.user?.id) {
+    redirect("/sign-in");
+  }
+  const userId = session.user.id;
 
   const [projects, githubStatus] = await Promise.all([
     listProjects(userId),
     getGitHubIntegrationStatus(userId),
   ]);
 
-  const firstName = session?.user?.name?.split(" ")[0] ?? "Engineer";
+  const firstName = session.user.name?.split(" ")[0] ?? "Engineer";
   const publishedCount = projects.filter((p) => p.status === "PUBLISHED").length;
   const readyCount = projects.filter((p) => p.status === "READY").length;
   const draftCount = projects.filter((p) => p.status === "DRAFT").length;
-  const publicCount = projects.filter((p) => p.visibility === "PUBLIC").length;
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -290,7 +290,7 @@ export default async function DashboardPage() {
                         </span>
                       )}
                       <span>
-                        updated {new Date(project.updatedAt).toLocaleDateString()}
+                        updated {new Date(project.updatedAt).toISOString().split("T")[0]}
                       </span>
                     </div>
                   </div>

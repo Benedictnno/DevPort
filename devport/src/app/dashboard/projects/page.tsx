@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import Link from "next/link";
-import { Plus, GitBranch, ArrowUpRight, FolderOpen, Layers, Globe, Server } from "lucide-react";
+import { redirect } from "next/navigation";
+import { Plus, GitBranch, ArrowUpRight, FolderOpen, Layers } from "lucide-react";
 import { listProjects } from "@/modules/projects/project.service";
 import type { Metadata } from "next";
 
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
 
 export default async function ProjectsListPage() {
   const session = await auth();
-  const projects = await listProjects(session!.user.id);
+  if (!session?.user?.id) {
+    redirect("/sign-in");
+  }
+  const projects = await listProjects(session.user.id);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
