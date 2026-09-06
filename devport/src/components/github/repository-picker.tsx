@@ -10,7 +10,6 @@ import {
   Loader2,
   ArrowRight,
   RefreshCw,
-  Terminal,
 } from "lucide-react";
 
 interface Repository {
@@ -37,7 +36,7 @@ export function GitHubRepositoryPicker() {
   const [search, setSearch] = useState("");
   const [importing, setImporting] = useState<number | null>(null);
 
-  const fetchRepositories = useCallback(async () => {
+  const loadRepositories = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -56,8 +55,36 @@ export function GitHubRepositoryPicker() {
   }, []);
 
   useEffect(() => {
-    fetchRepositories();
-  }, [fetchRepositories]);
+    let ignore = false;
+
+    async function initialFetch() {
+      try {
+        const res = await fetch("/api/v1/integrations/github/repositories");
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error?.message ?? "Failed to load repositories");
+        }
+        const data = await res.json();
+        if (!ignore) {
+          setRepositories(data.repositories ?? []);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : "Failed to load repositories");
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    initialFetch();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const filtered = repositories.filter(
     (repo) =>
@@ -113,7 +140,7 @@ export function GitHubRepositoryPicker() {
       <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-6 text-center">
         <p className="text-xs font-mono text-destructive mb-3">{error}</p>
         <button
-          onClick={fetchRepositories}
+          onClick={loadRepositories}
           className="text-xs font-mono text-primary hover:underline inline-flex items-center gap-1.5"
         >
           <RefreshCw className="w-3.5 h-3.5" />
@@ -141,7 +168,7 @@ export function GitHubRepositoryPicker() {
       <div className="flex items-center justify-between text-xs font-mono text-muted-foreground px-1">
         <span>{filtered.length} accessible repositories</span>
         <button
-          onClick={fetchRepositories}
+          onClick={loadRepositories}
           className="flex items-center gap-1.5 hover:text-on-surface transition-colors"
         >
           <RefreshCw className="w-3 h-3" />
