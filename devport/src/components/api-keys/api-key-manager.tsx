@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Key, Plus, Loader2, Trash2, Copy, CheckCheck, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Key, Plus, Loader2, Trash2, Copy, CheckCheck, ShieldCheck } from "lucide-react";
 import type { ApiKeyDto } from "@/modules/api-keys/api-key.service";
 
 interface ApiKeyManagerProps {

@@ -1,4 +1,4 @@
-import { z, ZodSchema } from "zod";
+import { type ZodSchema } from "zod";
 import { ValidationError } from "@/shared/errors";
 
 /**

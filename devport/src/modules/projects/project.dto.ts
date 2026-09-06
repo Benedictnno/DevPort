@@ -207,22 +207,38 @@ export function toProjectDto(project: ProjectWithRelations): ProjectDto {
 
 export function toPublicProjectDto(project: ProjectWithRelations): PublicProjectDto {
   const dto = toProjectDto(project);
-  const { id: _id, visibility: _vis, syncStatus: _ss, lastSyncedAt: _ls, repository, ...rest } = dto;
 
   // Explicitly construct the public repository shape — never expose isPrivate or importStatus
-  const publicRepository: PublicRepositoryDto | null = repository
+  const publicRepository: PublicRepositoryDto | null = dto.repository
     ? {
-        fullName: repository.fullName,
-        name: repository.name,
-        owner: repository.owner,
-        url: repository.url,
-        language: repository.language,
-        topics: repository.topics,
-        lastPushedAt: repository.lastPushedAt,
+        fullName: dto.repository.fullName,
+        name: dto.repository.name,
+        owner: dto.repository.owner,
+        url: dto.repository.url,
+        language: dto.repository.language,
+        topics: dto.repository.topics,
+        lastPushedAt: dto.repository.lastPushedAt,
       }
     : null;
 
-  return { ...rest, repository: publicRepository };
+  return {
+    slug: dto.slug,
+    title: dto.title,
+    summary: dto.summary,
+    overview: dto.overview,
+    architecture: dto.architecture,
+    status: dto.status,
+    featured: dto.featured,
+    features: dto.features,
+    technologies: dto.technologies,
+    links: dto.links,
+    media: dto.media,
+    repository: publicRepository,
+    deployment: dto.deployment,
+    apiDocs: dto.apiDocs,
+    createdAt: dto.createdAt,
+    updatedAt: dto.updatedAt,
+  };
 }
 
 export function toProjectSummaryDto(project: ProjectSummary): ProjectSummaryDto {

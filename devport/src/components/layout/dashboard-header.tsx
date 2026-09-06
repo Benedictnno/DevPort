@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Search, Bell, ExternalLink, Plus, Activity, Terminal } from "lucide-react";
+import { Search, Plus } from "lucide-react";
 
 interface DashboardHeaderProps {
   userName?: string | null;
@@ -25,6 +25,13 @@ export function DashboardHeader({ userName }: DashboardHeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* User Identity Badge */}
+        {userName && (
+          <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-surface-container-low border border-outline-variant/60 rounded-full">
+            <span className="font-mono text-[11px] text-on-surface-variant font-medium">@{userName}</span>
+          </div>
+        )}
+
         {/* Environment Status Badge */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-surface-container-low border border-outline-variant/60 rounded-full">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>

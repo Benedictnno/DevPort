@@ -15,7 +15,6 @@ import {
   Link2,
   Code2,
   Terminal,
-  Activity,
   ArrowUpRight,
   Sparkles,
   RefreshCw,

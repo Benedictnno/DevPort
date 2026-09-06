@@ -1,5 +1,3 @@
-import type { RepositoryFile } from "@/modules/integrations/github/github.provider";
-
 // Files to prioritize for tech stack detection
 const MANIFEST_FILES = [
   "package.json",

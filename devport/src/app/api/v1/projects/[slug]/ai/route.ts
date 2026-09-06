@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { ProjectRepository } from "@/modules/projects/project.repository";
 import { executeRepositoryAnalysis } from "@/jobs/repository-analysis/worker";
 import { toProjectDto } from "@/modules/projects/project.dto";
-import { toErrorResponse, NotFoundError, AuthorizationError } from "@/shared/errors";
+import { toErrorResponse, NotFoundError } from "@/shared/errors";
 
 const projectRepository = new ProjectRepository();
 
