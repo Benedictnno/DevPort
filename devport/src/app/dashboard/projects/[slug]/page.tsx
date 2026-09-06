@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getProject } from "@/modules/projects/project.service";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ProjectEditor } from "@/components/projects/project-editor";
 import type { Metadata } from "next";
 
@@ -15,10 +15,16 @@ export default async function ProjectPage({ params }: Props) {
   const { slug } = await params;
   const session = await auth();
 
+  if (!session?.user?.id) {
+    redirect("/sign-in");
+  }
+
+  let project;
   try {
-    const project = await getProject(slug, session!.user.id);
-    return <ProjectEditor project={project} />;
+    project = await getProject(slug, session.user.id);
   } catch {
     notFound();
   }
+
+  return <ProjectEditor project={project} />;
 }
