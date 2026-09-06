@@ -136,3 +136,170 @@
 - **Next.js Production Build**: 21 routes compiled & static pages generated cleanly
 - **Git State**: Clean working tree on `main`
 
+---
+
+## Phase 6: Production-Readiness Pass
+
+### 1. Production Security Headers (`next.config.ts`)
+Configured strict, modern security headers applied globally across all routes:
+- `X-DNS-Prefetch-Control: on`
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+- `X-Frame-Options: SAMEORIGIN` (prevents clickjacking)
+- `X-Content-Type-Options: nosniff` (prevents MIME sniffing)
+- `Referrer-Policy: origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`
+- `poweredByHeader: false` (removes identifying `x-powered-by: Next.js` header)
+
+### 2. Global Metadata, SEO & OpenGraph (`src/app/layout.tsx`)
+- Configured `metadataBase` dynamically using `process.env.NEXTAUTH_URL || "https://devport.local"`.
+- Set title template: `%s | DevPort`.
+- Configured rich OpenGraph card metadata (`title`, `description`, `siteName`, `locale: en_US`, `type: website`).
+- Configured Twitter Card metadata (`summary_large_image`).
+- Added standard robots directives (`index: true, follow: true`).
+
+### 3. Search Engine Discovery & Indexing
+- **Robots Endpoint** (`src/app/robots.ts`):
+  - Allows public crawling of `/` and `/projects/*`.
+  - Disallows internal surfaces: `/dashboard/*`, `/api/*`, `/_next/*`.
+  - Links to canonical sitemap at `/sitemap.xml`.
+- **Dynamic Sitemap Endpoint** (`src/app/sitemap.ts`):
+  - Indexing static public pages (`/`, `/sign-in`, `/sign-up`).
+  - Queries database for all `PUBLIC` and `PUBLISHED` projects and generates dynamic entry URLs with accurate `lastModified` timestamps.
+  - Implements graceful fallback to static routes during cold starts or unseeded database builds.
+
+### 4. Verification
+- **Unit Tests**: 18/18 passed (`vitest run`).
+- **ESLint**: 0 errors, 0 warnings.
+- **Production Compiler**: Turbopack compiled static and dynamic routes including `/robots.txt` and `/sitemap.xml` with zero errors.
+- **Commit**: `39f94e4 feat(prod): add security headers, open graph/twitter metadata, robots.txt, and sitemap.xml`
+
+---
+
+## Final Project Directory Structure (Before vs After)
+
+```text
+BEFORE (Phase 0 Baseline):
+src/
+├── app/
+│   ├── api/
+│   ├── dashboard/
+│   │   ├── api-keys/page.tsx
+│   │   ├── import/page.tsx
+│   │   ├── projects/
+│   │   │   ├── [slug]/page.tsx   [try/catch JSX error & unsafe session]
+│   │   │   └── page.tsx          [unsafe session]
+│   │   ├── settings/page.tsx     [unsafe session]
+│   │   ├── layout.tsx
+│   │   └── page.tsx              [unsafe session & locale date mismatch]
+│   ├── projects/[slug]/page.tsx
+│   ├── layout.tsx                [basic metadata]
+│   ├── page.tsx
+│   └── globals.css
+├── components/
+│   ├── api-keys/
+│   ├── github/
+│   │   └── repository-picker.tsx [cascading setState on mount]
+│   ├── layout/
+│   └── projects/
+├── lib/
+│   ├── auth.config.ts
+│   ├── auth.ts
+│   ├── db.ts
+│   ├── prisma.ts                 [DEAD DUPLICATE]
+│   └── utils.ts
+├── modules/
+│   ├── api-keys/
+│   ├── documentation/openapi.parser.ts [any typings]
+│   ├── integrations/
+│   ├── projects/project.dto.ts   [unused destructured variables]
+│   └── users/
+├── shared/crypto/index.ts        [module load-time env evaluation]
+├── utils/                        [EMPTY DIRECTORY]
+├── middleware.ts
+public/                           [unused SVG boilerplate files]
+vitest.config.ts                  [__dirname native ESM warning]
+
+AFTER (Phase 6 Production-Ready Shape):
+src/
+├── app/
+│   ├── not-found.tsx             [NEW: Global custom 404 boundary]
+│   ├── robots.ts                 [NEW: Standardized robots.txt]
+│   ├── sitemap.ts                [NEW: Dynamic public project sitemap]
+│   ├── api/
+│   ├── dashboard/
+│   │   ├── loading.tsx           [NEW: Dashboard skeleton boundary]
+│   │   ├── error.tsx             [NEW: Dashboard error boundary]
+│   │   ├── api-keys/page.tsx     [FIXED: explicit auth guard]
+│   │   ├── import/page.tsx       [FIXED: explicit auth guard]
+│   │   ├── projects/
+│   │   │   ├── [slug]/
+│   │   │   │   ├── loading.tsx   [NEW: Project editor loading boundary]
+│   │   │   │   ├── error.tsx     [NEW: Project editor error boundary]
+│   │   │   │   └── page.tsx      [FIXED: React 19 JSX boundary + auth guard]
+│   │   │   └── page.tsx          [FIXED: explicit auth guard]
+│   │   ├── settings/page.tsx     [FIXED: explicit auth guard]
+│   │   ├── layout.tsx
+│   │   └── page.tsx              [FIXED: explicit auth guard + ISO date SSR]
+│   ├── projects/
+│   │   └── [slug]/
+│   │       ├── loading.tsx       [NEW: Public portfolio loading skeleton]
+│   │       ├── error.tsx         [NEW: Public portfolio error boundary]
+│   │       └── page.tsx
+│   ├── layout.tsx                [ENHANCED: metadataBase, Twitter, OpenGraph]
+│   ├── page.tsx
+│   └── globals.css
+├── components/
+│   ├── github/
+│   │   └── repository-picker.tsx [FIXED: clean effect lifecycle]
+│   ├── layout/dashboard-header.tsx [FIXED: rendered @user badge, 0 warnings]
+│   ├── projects/
+│   └── api-keys/
+├── lib/
+│   ├── auth.config.ts
+│   ├── auth.ts
+│   ├── db.ts
+│   └── utils.ts
+├── modules/
+│   ├── api-keys/
+│   ├── documentation/openapi.parser.ts [FIXED: strict Record<string, unknown>]
+│   ├── integrations/
+│   ├── projects/project.dto.ts   [FIXED: explicit mapper, 0 warnings]
+│   └── users/
+├── shared/crypto/index.ts        [FIXED: lazy getEncryptionKey() evaluation]
+├── middleware.ts
+vitest.config.mjs                 [FIXED: import.meta.dirname, 0 warnings]
+next.config.ts                    [ENHANCED: Strict security headers & no poweredBy]
+```
+
+---
+
+## Production Readiness Checklist & Deployment Notes
+
+### Completed Automations (In Codebase)
+- [x] All React 19 and Next.js 16 App Router runtime & build errors resolved.
+- [x] Full test suite (18/18) passing natively with zero deprecation warnings.
+- [x] ESLint runs with 0 errors and 0 warnings.
+- [x] Next.js Turbopack production build compiles with zero errors.
+- [x] Security headers (HSTS, CSP-ready, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy).
+- [x] Granular route-level `loading.tsx` and `error.tsx` boundaries for all dynamic client & server segments.
+- [x] Global custom `not-found.tsx` with unified design system styling.
+- [x] Automated OpenGraph and Twitter card metadata in root layout.
+- [x] Automated `robots.txt` and dynamic `sitemap.xml` with database integration.
+
+### Human Decisions & Infrastructure Prerequisites (Required for Production Deployment)
+1. **Domain & URLs**:
+   - Set `NEXTAUTH_URL` to your production domain (e.g. `https://app.devport.io`).
+2. **Authentication Secrets**:
+   - Generate a strong 32+ byte string for `AUTH_SECRET` / `NEXTAUTH_SECRET`.
+   - Set up GitHub OAuth App credentials in production GitHub Developer Settings:
+     - Authorization callback URL: `https://<YOUR_DOMAIN>/api/auth/callback/github`
+     - Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
+3. **Database & Migrations**:
+   - Ensure production PostgreSQL database is accessible via `DATABASE_URL`.
+   - Run `npx prisma migrate deploy` in your production release pipeline.
+4. **Redis Queue**:
+   - Set `REDIS_URL` in production for BullMQ background workers (e.g. Upstash or AWS ElastiCache).
+5. **Encryption Key**:
+   - Generate a 32-byte hex string (64 characters) for `ENCRYPTION_KEY` to encrypt external integration secrets.
+
+
