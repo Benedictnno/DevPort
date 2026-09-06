@@ -16,6 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXTAUTH_URL || "https://devport.local"),
   title: {
     default: "DevPort — Developer Infrastructure & Project Intelligence",
     template: "%s | DevPort",
@@ -23,10 +24,24 @@ export const metadata: Metadata = {
   description:
     "DevPort connects your GitHub, Vercel, and OpenAPI sources into a structured project profile you can manage and expose through an API.",
   keywords: ["developer portfolio", "project management", "GitHub", "API", "project intelligence", "infrastructure"],
+  authors: [{ name: "DevPort Team" }],
   openGraph: {
     type: "website",
     locale: "en_US",
     siteName: "DevPort",
+    title: "DevPort — Developer Infrastructure & Project Intelligence",
+    description:
+      "DevPort connects your GitHub, Vercel, and OpenAPI sources into a structured project profile you can manage and expose through an API.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "DevPort — Developer Infrastructure & Project Intelligence",
+    description:
+      "DevPort connects your GitHub, Vercel, and OpenAPI sources into a structured project profile you can manage and expose through an API.",
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
