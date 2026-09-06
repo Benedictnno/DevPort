@@ -107,7 +107,12 @@ export class ProjectRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await db.project.delete({ where: { id } });
+    await db.$transaction([
+      db.gitHubRepository.deleteMany({ where: { projectId: id } }),
+      db.deployment.deleteMany({ where: { projectId: id } }),
+      db.apiDocumentation.deleteMany({ where: { projectId: id } }),
+      db.project.delete({ where: { id } }),
+    ]);
   }
 
   async slugExists(slug: string): Promise<boolean> {

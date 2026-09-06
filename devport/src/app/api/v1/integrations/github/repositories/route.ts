@@ -116,9 +116,10 @@ export async function POST(req: NextRequest) {
       syncStatus: "SYNCING",
     });
 
-    // Create the GitHub repository record
-    const repository = await db.gitHubRepository.create({
-      data: {
+    // Create or reconnect the GitHub repository record
+    const repository = await db.gitHubRepository.upsert({
+      where: { githubId: input.githubId },
+      create: {
         integrationId: integration.id,
         projectId: project.id,
         githubId: input.githubId,
@@ -134,13 +135,39 @@ export async function POST(req: NextRequest) {
         cloneUrl: input.cloneUrl,
         importStatus: "PENDING",
       },
+      update: {
+        integrationId: integration.id,
+        projectId: project.id,
+        fullName: input.fullName,
+        name: input.name,
+        owner: input.owner,
+        description: input.description,
+        defaultBranch: input.defaultBranch,
+        language: input.language,
+        topics: input.topics,
+        isPrivate: input.isPrivate,
+        url: input.url,
+        cloneUrl: input.cloneUrl,
+        importStatus: "PENDING",
+      },
     });
 
     // Store GitHub as a project source
-    await db.projectSource.create({
-      data: {
+    await db.projectSource.upsert({
+      where: {
+        projectId_type: {
+          projectId: project.id,
+          type: "GITHUB",
+        },
+      },
+      create: {
         projectId: project.id,
         type: "GITHUB",
+        externalId: String(input.githubId),
+        externalUrl: input.url,
+        syncedAt: new Date(),
+      },
+      update: {
         externalId: String(input.githubId),
         externalUrl: input.url,
         syncedAt: new Date(),

@@ -108,19 +108,12 @@ export async function findImportedRepository(
   userId: string,
   githubId: number
 ): Promise<{ projectId: string } | null> {
-  const integration = await db.integration.findFirst({
-    where: { userId, provider: "GITHUB" },
-    include: {
-      repositories: {
-        where: { githubId },
-        select: { projectId: true },
-      },
-    },
+  const repo = await db.gitHubRepository.findUnique({
+    where: { githubId },
+    include: { project: true },
   });
 
-  if (!integration) return null;
-  const repo = integration.repositories[0];
-  if (!repo?.projectId) return null;
+  if (!repo || !repo.projectId || !repo.project) return null;
   return { projectId: repo.projectId };
 }
 
