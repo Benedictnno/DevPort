@@ -2,9 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   toProjectDto,
   toPublicProjectDto,
-  toProjectSummaryDto,
 } from "@/modules/projects/project.dto";
-import type { ProjectWithRelations, ProjectSummary } from "@/modules/projects/project.repository";
+import type { ProjectWithRelations } from "@/modules/projects/project.repository";
 
 describe("Project DTO Mappers", () => {
   const mockDate = new Date("2026-08-31T09:00:00.000Z");
@@ -98,12 +97,13 @@ describe("Project DTO Mappers", () => {
 
   it("should omit private and internal fields in PublicProjectDto", () => {
     const publicDto = toPublicProjectDto(mockProject);
+    const untyped = publicDto as unknown as Record<string, unknown>;
 
     // Should NOT have id, visibility, syncStatus, lastSyncedAt
-    expect((publicDto as any).id).toBeUndefined();
-    expect((publicDto as any).visibility).toBeUndefined();
-    expect((publicDto as any).syncStatus).toBeUndefined();
-    expect((publicDto as any).lastSyncedAt).toBeUndefined();
+    expect(untyped.id).toBeUndefined();
+    expect(untyped.visibility).toBeUndefined();
+    expect(untyped.syncStatus).toBeUndefined();
+    expect(untyped.lastSyncedAt).toBeUndefined();
 
     // Should have public fields
     expect(publicDto.slug).toBe("my-app");

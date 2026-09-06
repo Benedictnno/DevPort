@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import crypto from "crypto";
 import { generateApiKey, hashApiKey, verifyGitHubWebhookSignature } from "@/shared/crypto";
 
 describe("Crypto Utilities", () => {
@@ -22,7 +23,6 @@ describe("Crypto Utilities", () => {
     const payload = JSON.stringify({ action: "push", repository: { name: "devport" } });
     const secret = "test-secret-123";
 
-    const crypto = require("crypto");
     const validSignature = `sha256=${crypto.createHmac("sha256", secret).update(payload).digest("hex")}`;
 
     expect(verifyGitHubWebhookSignature(payload, validSignature, secret)).toBe(true);

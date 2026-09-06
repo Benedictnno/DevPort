@@ -38,17 +38,17 @@ const VALID_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", 
 export function parseOpenApiSpec(content: string): ParsedApiDocumentation | null {
   if (!content || !content.trim()) return null;
 
-  let spec: Record<string, any>;
+  let spec: Record<string, unknown>;
   try {
     // Try parsing as JSON first, fallback to YAML
     if (content.trim().startsWith("{")) {
-      spec = JSON.parse(content);
+      spec = JSON.parse(content) as Record<string, unknown>;
     } else {
-      spec = YAML.parse(content);
+      spec = YAML.parse(content) as Record<string, unknown>;
     }
   } catch {
     try {
-      spec = YAML.parse(content);
+      spec = YAML.parse(content) as Record<string, unknown>;
     } catch {
       return null;
     }
@@ -57,28 +57,30 @@ export function parseOpenApiSpec(content: string): ParsedApiDocumentation | null
   if (!spec || typeof spec !== "object") return null;
 
   // Check if it looks like an OpenAPI or Swagger doc
-  const specVersion = spec.openapi ?? spec.swagger ?? null;
+  const specVersion = (spec.openapi ?? spec.swagger ?? null) as string | null;
   if (!spec.paths && !specVersion) {
     return null;
   }
 
-  const info = spec.info ?? {};
+  const info = (spec.info as Record<string, unknown> | undefined) ?? {};
   const title = String(info.title ?? "API Documentation");
   const version = info.version ? String(info.version) : null;
   const description = info.description ? String(info.description) : null;
 
   // Determine base URL
   let baseUrl: string | null = null;
-  if (Array.isArray(spec.servers) && spec.servers.length > 0 && spec.servers[0]?.url) {
-    baseUrl = String(spec.servers[0].url);
+  const servers = spec.servers as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(servers) && servers.length > 0 && servers[0]?.url) {
+    baseUrl = String(servers[0].url);
   } else if (spec.host) {
-    const scheme = Array.isArray(spec.schemes) && spec.schemes[0] ? spec.schemes[0] : "https";
-    const basePath = spec.basePath ?? "";
-    baseUrl = `${scheme}://${spec.host}${basePath}`;
+    const schemes = spec.schemes as string[] | undefined;
+    const scheme = Array.isArray(schemes) && schemes[0] ? schemes[0] : "https";
+    const basePath = String(spec.basePath ?? "");
+    baseUrl = `${scheme}://${String(spec.host)}${basePath}`;
   }
 
   const endpoints: ParsedEndpoint[] = [];
-  const paths = spec.paths ?? {};
+  const paths = (spec.paths as Record<string, Record<string, unknown>> | undefined) ?? {};
   let orderIndex = 0;
 
   for (const [pathKey, pathItem] of Object.entries(paths)) {
@@ -90,33 +92,37 @@ export function parseOpenApiSpec(content: string): ParsedApiDocumentation | null
         continue;
       }
 
-      const op = operation as Record<string, any>;
+      const op = operation as Record<string, unknown>;
       const tags = Array.isArray(op.tags) ? op.tags.map(String) : [];
 
       // Parameters
-      const rawParams = Array.isArray(op.parameters) ? op.parameters : [];
-      const parameters = rawParams.map((p: any) => ({
+      const rawParams = Array.isArray(op.parameters)
+        ? (op.parameters as Array<Record<string, unknown>>)
+        : [];
+      const parameters = rawParams.map((p) => ({
         name: String(p.name ?? ""),
         in: String(p.in ?? "query"),
         required: Boolean(p.required),
         description: p.description ? String(p.description) : undefined,
-        schema: p.schema ?? (p.type ? { type: p.type } : undefined),
+        schema: (p.schema ?? (p.type ? { type: p.type } : undefined)) as Record<string, unknown> | undefined,
       }));
 
       // Request Schema (OpenAPI 3.x requestBody or Swagger 2.0 body param)
       let requestSchema: Record<string, unknown> | null = null;
-      if (op.requestBody?.content?.["application/json"]?.schema) {
-        requestSchema = op.requestBody.content["application/json"].schema;
+      const requestBody = op.requestBody as { content?: { "application/json"?: { schema?: Record<string, unknown> } } } | undefined;
+      if (requestBody?.content?.["application/json"]?.schema) {
+        requestSchema = requestBody.content["application/json"].schema;
       } else {
-        const bodyParam = rawParams.find((p: any) => p.in === "body");
+        const bodyParam = rawParams.find((p) => p.in === "body");
         if (bodyParam?.schema) {
-          requestSchema = bodyParam.schema;
+          requestSchema = bodyParam.schema as Record<string, unknown>;
         }
       }
 
       // Response Schema (200 / 201)
       let responseSchema: Record<string, unknown> | null = null;
-      const successRes = op.responses?.["200"] ?? op.responses?.["201"] ?? op.responses?.["204"];
+      const responses = op.responses as Record<string, { content?: { "application/json"?: { schema?: Record<string, unknown> } }; schema?: Record<string, unknown> }> | undefined;
+      const successRes = responses?.["200"] ?? responses?.["201"] ?? responses?.["204"];
       if (successRes?.content?.["application/json"]?.schema) {
         responseSchema = successRes.content["application/json"].schema;
       } else if (successRes?.schema) {
