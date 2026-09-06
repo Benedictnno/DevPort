@@ -71,13 +71,16 @@ export function verifyGitHubWebhookSignature(
  * Encrypt a value (e.g. OAuth access token) for storage.
  * Uses AES-256-GCM.
  */
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "";
-
-export function encryptToken(plaintext: string): string {
-  if (!ENCRYPTION_KEY) {
+function getEncryptionKey(): Buffer {
+  const keyHex = process.env.ENCRYPTION_KEY;
+  if (!keyHex || keyHex.trim() === "") {
     throw new Error("ENCRYPTION_KEY environment variable is not set");
   }
-  const key = Buffer.from(ENCRYPTION_KEY, "hex");
+  return Buffer.from(keyHex, "hex");
+}
+
+export function encryptToken(plaintext: string): string {
+  const key = getEncryptionKey();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([
@@ -89,10 +92,7 @@ export function encryptToken(plaintext: string): string {
 }
 
 export function decryptToken(ciphertext: string): string {
-  if (!ENCRYPTION_KEY) {
-    throw new Error("ENCRYPTION_KEY environment variable is not set");
-  }
-  const key = Buffer.from(ENCRYPTION_KEY, "hex");
+  const key = getEncryptionKey();
   const data = Buffer.from(ciphertext, "base64");
   const iv = data.subarray(0, 16);
   const authTag = data.subarray(16, 32);
