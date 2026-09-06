@@ -87,6 +87,52 @@
 ## Baseline Stability Checkpoint
 - **TypeScript (`npx tsc --noEmit`)**: Clean (0 errors)
 - **Unit Tests (`npm test`)**: 18/18 passed
-- **ESLint (`npm run lint`)**: Clean (0 errors)
+- **ESLint (`npm run lint`)**: Clean (0 errors, 0 warnings)
 - **Production Build (`npm run build`)**: 21 routes compiled & static pages generated cleanly
 - **Git Working Tree**: Clean on `main`
+
+---
+
+## Phase 5: Restructure Execution
+
+### Batch 1: Dead Code & Asset Pruning
+- **Files Removed**:
+  - `src/lib/prisma.ts` (dead duplicate of `src/lib/db.ts`)
+  - `src/utils/` (empty directory)
+  - `public/file.svg`, `public/globe.svg`, `public/next.svg`, `public/vercel.svg`, `public/window.svg` (unused Next.js starter boilerplate)
+- **Config Migration**:
+  - `vitest.config.ts` -> `vitest.config.mjs` with `import.meta.dirname` to eliminate native ESM config loader warning.
+- **Verification**: Tests 18/18 passed, lint clean, Next.js build succeeded.
+- **Commit**: `2c69033 refactor(cleanup): remove dead code, unused assets, and migrate vitest config to mjs`
+
+### Batch 2: Granular Route Boundaries (Loading, Error & Not-Found)
+- **Files Added**:
+  - `src/app/not-found.tsx` (Global 404 boundary)
+  - `src/app/dashboard/loading.tsx` & `src/app/dashboard/error.tsx`
+  - `src/app/dashboard/projects/[slug]/loading.tsx` & `src/app/dashboard/projects/[slug]/error.tsx`
+  - `src/app/projects/[slug]/loading.tsx` & `src/app/projects/[slug]/error.tsx`
+- **Verification**: Tests 18/18 passed, lint clean, Next.js build succeeded.
+- **Commit**: `5e1bf9c feat(boundaries): add granular loading, error, and not-found route boundaries`
+
+### Batch 3: Zero-Warning ESLint Hygiene
+- **Files Cleaned**:
+  - `src/app/api/v1/projects/[slug]/ai/route.ts` (removed unused `AuthorizationError`)
+  - `src/components/api-keys/api-key-manager.tsx` (removed unused `ShieldAlert`)
+  - `src/components/layout/dashboard-header.tsx` (removed unused Lucide icons & rendered `userName` badge)
+  - `src/components/projects/project-editor.tsx` (removed unused `Activity` icon)
+  - `src/jobs/repository-analysis/analyzer.ts` (removed unused `RepositoryFile` type import)
+  - `src/modules/projects/project.dto.ts` (explicit field mapping in `toPublicProjectDto`)
+  - `src/shared/queue/client.ts` (removed unused `QueueEvents`)
+  - `src/shared/validation/validate.ts` (removed unused `z` namespace)
+  - `tests/unit/validation.test.ts` (removed unused `updateProjectSchema` import)
+- **Verification**: `npm run lint` reports 0 errors and 0 warnings (100% clean), tests 18/18 passed, Next.js build succeeded.
+- **Commit**: `e5b347c refactor(lint): eliminate remaining unused variable and import warnings`
+
+---
+
+## Phase 5 Verification Summary
+- **Unit Tests**: 18/18 passed across 5 test suites
+- **ESLint**: 0 errors, 0 warnings
+- **Next.js Production Build**: 21 routes compiled & static pages generated cleanly
+- **Git State**: Clean working tree on `main`
+
