@@ -30,19 +30,31 @@ export async function executeRepositoryAnalysis(
     repository: githubFullName,
   });
 
+  // How long a job may sit in ANALYZING before we treat it as crashed/stuck.
+  const STUCK_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
   // Guard against concurrent analysis runs — use the repository's importStatus
   // (not the project's syncStatus, which is set to SYNCING during creation).
   const currentRepository = await db.gitHubRepository.findUnique({
     where: { id: repositoryId },
-    select: { importStatus: true },
+    select: { importStatus: true, updatedAt: true },
   });
   if (!currentRepository) {
     logger.warn("Repository not found, skipping analysis", { repositoryId });
     return;
   }
+
   if (currentRepository.importStatus === "ANALYZING") {
-    logger.warn("Analysis already in progress, skipping duplicate run", { repositoryId });
-    return;
+    const ageMs = Date.now() - currentRepository.updatedAt.getTime();
+    if (ageMs < STUCK_THRESHOLD_MS) {
+      logger.warn("Analysis already in progress, skipping duplicate run", { repositoryId });
+      return;
+    }
+    // Job is stale — treat the previous run as crashed and allow re-entry.
+    logger.warn("Analysis appears stuck (>10 min in ANALYZING), resetting and re-running", {
+      repositoryId,
+      ageMs,
+    });
   }
 
   // Mark as in-flight immediately
@@ -57,7 +69,18 @@ export async function executeRepositoryAnalysis(
     data: { syncStatus: "SYNCING" },
   });
 
+  // Overall timeout — if analysis takes longer than this, abort rather than hang forever.
+  const ANALYSIS_TIMEOUT_MS = 8 * 60 * 1000; // 8 minutes
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`Repository analysis timed out after ${ANALYSIS_TIMEOUT_MS / 1000}s`));
+    }, ANALYSIS_TIMEOUT_MS);
+  });
+
   try {
+    await Promise.race([
+      (async () => {
     const adapter = await getGitHubAdapterForUser(userId);
     const repository = await db.gitHubRepository.findUnique({
       where: { id: repositoryId },
@@ -298,6 +321,9 @@ export async function executeRepositoryAnalysis(
     });
 
     logger.info("Repository analysis complete", { projectId });
+      })(),
+      timeoutPromise,
+    ]);
   } catch (error) {
     logger.error("Repository analysis failed", {
       projectId,
@@ -326,7 +352,9 @@ export async function executeRepositoryAnalysis(
       logger.warn("Project row missing during error cleanup — likely deleted mid-analysis", { projectId });
     });
 
-    throw error;
+  } finally {
+    // Always clear the timeout handle to avoid leaking timers.
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 }
 
