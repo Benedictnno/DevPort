@@ -12,23 +12,28 @@ export function getRedisConnection(): IORedis {
       maxRetriesPerRequest: null, // Required by BullMQ
       enableReadyCheck: false,
       lazyConnect: true,
-      retryStrategy(times) {
-        // Backoff retry strategy capped at 30 seconds
+      retryStrategy(times: number) {
+        // Cap retries at 5 attempts if server is unreachable (e.g. invalid host / offline Redis)
+        if (times > 5) return null;
         return Math.min(times * 2000, 30000);
       },
     });
 
-    redisConnection.on("error", (err: { code?: string; message?: string }) => {
+    redisConnection.on("error", (err: Error & { code?: string }) => {
+      const msg = String(err?.message ?? "");
+      const code = err?.code;
       // Suppress normal idle disconnect / offline reconnection noise (Upstash / local dev)
       if (
-        err.code === "ECONNREFUSED" ||
-        err.code === "ECONNRESET" ||
-        err.code === "ETIMEDOUT" ||
-        err.code === "ENOTFOUND"
+        code === "ECONNREFUSED" ||
+        code === "ECONNRESET" ||
+        code === "ETIMEDOUT" ||
+        code === "ENOTFOUND" ||
+        msg.includes("ENOTFOUND") ||
+        msg.includes("getaddrinfo")
       ) {
         return;
       }
-      console.error("[Redis Queue Warning]", err.message ?? err);
+      console.error("[Redis Queue Warning]", msg);
     });
   }
   return redisConnection;
