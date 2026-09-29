@@ -94,6 +94,7 @@ export function GitHubRepositoryPicker() {
 
   async function importRepository(repo: Repository) {
     setImporting(repo.id);
+    let targetSlug: string | null = null;
     try {
       const res = await fetch("/api/v1/integrations/github/repositories", {
         method: "POST",
@@ -119,10 +120,16 @@ export function GitHubRepositoryPicker() {
       }
 
       const data = await res.json();
-      router.push(`/dashboard/projects/${data.project.slug}`);
+      targetSlug = data.project.slug;
     } catch (err) {
       alert(err instanceof Error ? err.message : "Import failed");
+    } finally {
       setImporting(null);
+    }
+
+    if (targetSlug) {
+      // Replace import page in history so Back button doesn't return to it
+      router.replace(`/dashboard/projects/${targetSlug}`);
     }
   }
 

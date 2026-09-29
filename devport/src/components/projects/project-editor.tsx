@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Globe,
@@ -35,12 +35,53 @@ export function ProjectEditor({ project: initial }: ProjectEditorProps) {
   const [syncingRepo, setSyncingRepo] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "features" | "tech" | "links" | "api">("overview");
 
+  // Auto-refresh while background analysis is running so the
+  // "Analyzing Node..." badge clears without requiring a manual page refresh.
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (project.syncStatus === "SYNCING") {
+      pollingRef.current = setInterval(() => {
+        router.refresh();
+      }, 4000);
+    } else {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    }
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [project.syncStatus, router]);
+
   // Form state
-  const [title, setTitle] = useState(project.title);
-  const [summary, setSummary] = useState(project.summary);
-  const [overview, setOverview] = useState(project.overview);
-  const [architecture, setArchitecture] = useState(project.architecture ?? "");
-  const [productionUrl, setProductionUrl] = useState(project.deployment?.productionUrl ?? "");
+  const [title, setTitle] = useState(initial.title);
+  const [summary, setSummary] = useState(initial.summary);
+  const [overview, setOverview] = useState(initial.overview);
+  const [architecture, setArchitecture] = useState(initial.architecture ?? "");
+  const [productionUrl, setProductionUrl] = useState(initial.deployment?.productionUrl ?? "");
+
+  // When router.refresh() delivers new server data while analysis is running,
+  // sync the form fields automatically — but only if the user has no unsaved edits.
+  const prevSyncStatus = useRef(initial.syncStatus);
+  useEffect(() => {
+    const wasAnalyzing = prevSyncStatus.current === "SYNCING";
+    const isNowDone = initial.syncStatus !== "SYNCING";
+    prevSyncStatus.current = initial.syncStatus;
+
+    if (wasAnalyzing && isNowDone) {
+      // Analysis just finished — refresh form fields with the new data
+      setProject(initial);
+      setTitle(initial.title);
+      setSummary(initial.summary);
+      setOverview(initial.overview);
+      setArchitecture(initial.architecture ?? "");
+      setProductionUrl(initial.deployment?.productionUrl ?? "");
+    }
+  }, [initial]);
 
   async function triggerAiAnalysis() {
     setAnalyzingAi(true);
