@@ -32,7 +32,7 @@ export class GroqAdapter implements AIProvider {
 
   constructor(
     apiKey = process.env.GROQ_API_KEY ?? "",
-    model = "llama-3.3-70b-versatile"
+    model = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile"
   ) {
     this.client = new Groq({ apiKey });
     this.model = model;
@@ -49,22 +49,46 @@ export class GroqAdapter implements AIProvider {
     });
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: [
-          {
-            role: "system",
-            content: SYSTEM_PROMPT,
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 2048,
-        response_format: { type: "json_object" },
-      });
+      const fallbackModels = [this.model, "llama-3.1-8b-instant", "llama3-70b-8192"];
+      let response = null;
+      let lastError: unknown = null;
+
+      for (const candidateModel of [...new Set(fallbackModels)]) {
+        try {
+          response = await this.client.chat.completions.create({
+            model: candidateModel,
+            messages: [
+              {
+                role: "system",
+                content: SYSTEM_PROMPT,
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            temperature: 0.3,
+            max_tokens: 2048,
+            response_format: { type: "json_object" },
+          });
+          if (candidateModel !== this.model) {
+            logger.info(`Fallback Groq model succeeded: ${candidateModel}`);
+          }
+          break;
+        } catch (error) {
+          lastError = error;
+          const msg = error instanceof Error ? error.message : String(error);
+          if (msg.includes("model_not_found") || msg.includes("does not exist")) {
+            logger.warn(`Groq model ${candidateModel} not found, trying fallback...`);
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      if (!response) {
+        throw lastError ?? new IntegrationError("Failed to invoke Groq API", "groq");
+      }
 
       const rawContent = response.choices[0]?.message?.content;
       if (!rawContent) {

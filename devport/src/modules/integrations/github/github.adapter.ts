@@ -65,7 +65,7 @@ export class GitHubAdapter implements SourceControlProvider {
 
       return {
         path: data.path,
-        content: Buffer.from(data.content, "base64").toString("utf-8"),
+        content: Buffer.from(data.content, "base64").toString("utf-8").replace(/\0/g, ""),
         encoding: "utf-8",
       };
     } catch (error: unknown) {
@@ -94,10 +94,12 @@ export class GitHubAdapter implements SourceControlProvider {
 
       if (Array.isArray(data) || data.type !== "file") return null;
 
-      const content =
+      const rawContent =
         data.encoding === "base64"
           ? Buffer.from(data.content, "base64").toString("utf-8")
           : data.content;
+
+      const content = rawContent.replace(/\0/g, "");
 
       return { path: data.path, content, encoding: "utf-8" };
     } catch (error) {

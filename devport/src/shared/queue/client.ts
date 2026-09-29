@@ -23,7 +23,8 @@ export function getRedisConnection(): IORedis {
       if (
         err.code === "ECONNREFUSED" ||
         err.code === "ECONNRESET" ||
-        err.code === "ETIMEDOUT"
+        err.code === "ETIMEDOUT" ||
+        err.code === "ENOTFOUND"
       ) {
         return;
       }

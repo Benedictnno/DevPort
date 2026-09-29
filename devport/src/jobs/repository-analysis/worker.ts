@@ -156,6 +156,10 @@ export async function executeRepositoryAnalysis(
     const updates: Record<string, unknown> = {};
     const repoName = githubFullName.split("/")[1];
 
+    // Helper to sanitize null bytes (\0 / 0x00) for PostgreSQL UTF-8 compatibility
+    const cleanStr = (val: string | null | undefined): string =>
+      val ? val.replace(/\0/g, "") : "";
+
     if (aiResult) {
       // Only apply AI title if the user hasn't already customised it
       // (i.e. it still matches the raw repo name set on import)
@@ -163,14 +167,14 @@ export async function executeRepositoryAnalysis(
         project.title === repoName ||
         project.title === repoName.replace(/-/g, " ") ||
         project.title.toLowerCase() === repoName.toLowerCase();
-      if (aiResult.title && titleIsDefault) updates.title = aiResult.title;
+      if (aiResult.title && titleIsDefault) updates.title = cleanStr(aiResult.title);
 
       // Only apply AI summary if still at the stub value set during import
       const summaryIsDefault = project.summary === `${repoName} repository` || project.summary === "";
-      if (aiResult.summary && summaryIsDefault) updates.summary = aiResult.summary;
+      if (aiResult.summary && summaryIsDefault) updates.summary = cleanStr(aiResult.summary);
 
-      if (aiResult.overview) updates.overview = aiResult.overview;
-      if (aiResult.architecture) updates.architecture = aiResult.architecture;
+      if (aiResult.overview) updates.overview = cleanStr(aiResult.overview);
+      if (aiResult.architecture) updates.architecture = cleanStr(aiResult.architecture);
     }
 
     // Always apply deterministic fallbacks for any missing fields
@@ -178,22 +182,29 @@ export async function executeRepositoryAnalysis(
     if (!updates.overview && (!project.overview || project.overview === "")) {
       if (readmeContent) {
         // Use the README as the overview base
-        updates.overview = readmeContent.substring(0, 5000);
+        updates.overview = cleanStr(readmeContent.substring(0, 5000));
       } else if (repository?.description) {
         // Fall back to repository description
-        updates.overview = repository.description;
+        updates.overview = cleanStr(repository.description);
       } else {
         // Generate a minimal overview from what we know
         const techList = allTechnologies.slice(0, 5).join(", ");
-        updates.overview = `${repoName} is a ${repository?.language ?? "software"} project${
+        updates.overview = cleanStr(`${repoName} is a ${repository?.language ?? "software"} project${
           techList ? ` built with ${techList}` : ""
-        }.`;
+        }.`);
       }
     }
 
     if (!updates.summary && (!project.summary || project.summary === `${repoName} repository`)) {
       if (repository?.description) {
-        updates.summary = repository.description;
+        updates.summary = cleanStr(repository.description);
+      }
+    }
+
+    // Sanitize any remaining string values in updates object
+    for (const [k, v] of Object.entries(updates)) {
+      if (typeof v === "string") {
+        updates[k] = cleanStr(v);
       }
     }
 
@@ -202,10 +213,11 @@ export async function executeRepositoryAnalysis(
     }
 
     // Apply tech stack (AI-derived or file-detected)
-    const technologies =
+    const technologies = (
       aiResult?.technologies && aiResult.technologies.length > 0
         ? aiResult.technologies
-        : allTechnologies;
+        : allTechnologies
+    ).map((t) => cleanStr(t));
 
     if (technologies.length > 0) {
       await projectRepository.replaceTechStack(
@@ -216,18 +228,23 @@ export async function executeRepositoryAnalysis(
     }
 
     // Apply features (AI-extracted, README-parsed, or generated from file analysis)
-    let features =
+    let rawFeatures =
       aiResult?.features && aiResult.features.length > 0
         ? aiResult.features
         : extractFeaturesFromReadme(readmeContent);
 
     // If still no features and we have tech stack data, generate basic feature entries
-    if (features.length === 0 && allTechnologies.length > 0) {
-      features = allTechnologies.slice(0, 5).map((tech) => ({
+    if (rawFeatures.length === 0 && allTechnologies.length > 0) {
+      rawFeatures = allTechnologies.slice(0, 5).map((tech) => ({
         title: tech,
         description: `Built with ${tech}`,
       }));
     }
+
+    const features = rawFeatures.map((f) => ({
+      title: cleanStr(f.title),
+      description: cleanStr(f.description ?? ""),
+    }));
 
     if (features.length > 0) {
       await projectRepository.replaceFeatures(projectId, features);
@@ -237,7 +254,11 @@ export async function executeRepositoryAnalysis(
     const extractedLinks = extractLinksFromReadme(
       readmeContent,
       repository?.url ?? `https://github.com/${githubFullName}`
-    );
+    ).map((l) => ({
+      ...l,
+      label: cleanStr(l.label),
+      url: cleanStr(l.url),
+    }));
 
     if (extractedLinks.length > 0) {
       await projectRepository.replaceLinks(projectId, extractedLinks);
@@ -245,6 +266,7 @@ export async function executeRepositoryAnalysis(
 
     // Store README as a project source
     if (readmeContent) {
+      const sanitizedReadme = cleanStr(readmeContent.substring(0, 50000));
       await db.projectSource.upsert({
         where: {
           projectId_type: { projectId, type: "README" },
@@ -252,11 +274,11 @@ export async function executeRepositoryAnalysis(
         create: {
           projectId,
           type: "README",
-          rawData: { content: readmeContent.substring(0, 50000) },
+          rawData: { content: sanitizedReadme },
           syncedAt: new Date(),
         },
         update: {
-          rawData: { content: readmeContent.substring(0, 50000) },
+          rawData: { content: sanitizedReadme },
           syncedAt: new Date(),
         },
       });
