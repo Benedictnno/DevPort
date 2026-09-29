@@ -394,8 +394,40 @@ export function ProjectEditor({ project: initial }: ProjectEditorProps) {
 
       {/* Tab Content Panel */}
       <div className="p-6 rounded-xl border border-outline-variant/60 bg-surface-container">
-        {activeTab === "overview" && (
-          <div className="space-y-5">
+        {project.syncStatus === "SYNCING" ? (
+          /* Skeleton loading state while background analysis runs */
+          <div className="space-y-5 animate-pulse">
+            <div className="space-y-1.5">
+              <div className="h-3 w-24 rounded bg-surface-container-highest" />
+              <div className="h-8 w-full rounded-lg bg-surface-container-highest" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <div className="h-3 w-16 rounded bg-surface-container-highest" />
+                <div className="h-3 w-10 rounded bg-surface-container-highest" />
+              </div>
+              <div className="h-8 w-full rounded-lg bg-surface-container-highest" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="h-3 w-32 rounded bg-surface-container-highest" />
+              <div className="h-36 w-full rounded-lg bg-surface-container-highest" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="h-3 w-40 rounded bg-surface-container-highest" />
+              <div className="h-20 w-full rounded-lg bg-surface-container-highest" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="h-3 w-56 rounded bg-surface-container-highest" />
+              <div className="h-8 w-full rounded-lg bg-surface-container-highest" />
+            </div>
+            <p className="text-center font-mono text-[11px] text-muted-foreground pt-2">
+              Analyzing repository… fields will populate automatically.
+          </p>
+          </div>
+        ) : (
+          <>
+            {activeTab === "overview" && (
+              <div className="space-y-5">
             <div>
               <label className="text-xs font-semibold text-on-surface mb-1.5 block">
                 Project Title
@@ -590,6 +622,8 @@ export function ProjectEditor({ project: initial }: ProjectEditorProps) {
               </div>
             )}
           </div>
+        )}
+          </>
         )}
       </div>
 
