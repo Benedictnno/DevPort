@@ -96,6 +96,27 @@ export function toErrorResponse(error: unknown): {
       status: error.statusCode,
     };
   }
+  // Prisma unique constraint violation (P2002)
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: string }).code === "P2002"
+  ) {
+    const meta = (error as { meta?: { target?: string[] | string } }).meta;
+    const target = Array.isArray(meta?.target)
+      ? meta.target.join(", ")
+      : typeof meta?.target === "string"
+      ? meta.target
+      : "repository";
+    return {
+      error: {
+        code: "CONFLICT",
+        message: `Repository or resource with this ${target} has already been imported`,
+      },
+      status: 409,
+    };
+  }
   // Never expose unknown errors to clients
   return {
     error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" },

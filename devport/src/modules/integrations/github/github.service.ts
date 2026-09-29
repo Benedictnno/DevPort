@@ -106,10 +106,13 @@ export async function saveGitHubIntegration(
  */
 export async function findImportedRepository(
   userId: string,
-  githubId: number
+  githubId: number,
+  fullName?: string
 ): Promise<{ projectId: string } | null> {
-  const repo = await db.gitHubRepository.findUnique({
-    where: { githubId },
+  const repo = await db.gitHubRepository.findFirst({
+    where: fullName
+      ? { OR: [{ githubId }, { fullName }] }
+      : { githubId },
     include: { project: true },
   });
 

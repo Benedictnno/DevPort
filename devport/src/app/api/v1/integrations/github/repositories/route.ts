@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const input = validate(importRepositorySchema, body);
 
     // Prevent duplicate imports
-    const existing = await findImportedRepository(session.user.id, input.githubId);
+    const existing = await findImportedRepository(session.user.id, input.githubId, input.fullName);
     if (existing) {
       throw new ConflictError(
         `Repository "${input.fullName}" has already been imported`
@@ -104,74 +104,97 @@ export async function POST(req: NextRequest) {
       slug = `${baseSlug}-${attempt}`;
     }
 
-    // Create the project draft
-    const project = await projectRepository.create({
-      owner: { connect: { id: session.user.id } },
-      slug,
-      title: input.name,
-      summary: input.description ?? `${input.name} repository`,
-      overview: "",
-      status: "DRAFT",
-      visibility: "PRIVATE",
-      syncStatus: "SYNCING",
-    });
+    // Atomic transaction for project creation and repository record creation/link
+    const { project, repository } = await db.$transaction(async (tx) => {
+      // Re-verify inside transaction to avoid race conditions
+      const existingRepo = await tx.gitHubRepository.findFirst({
+        where: { OR: [{ githubId: input.githubId }, { fullName: input.fullName }] },
+        include: { project: true },
+      });
 
-    // Create or reconnect the GitHub repository record
-    const repository = await db.gitHubRepository.upsert({
-      where: { githubId: input.githubId },
-      create: {
-        integrationId: integration.id,
-        projectId: project.id,
-        githubId: input.githubId,
-        fullName: input.fullName,
-        name: input.name,
-        owner: input.owner,
-        description: input.description,
-        defaultBranch: input.defaultBranch,
-        language: input.language,
-        topics: input.topics,
-        isPrivate: input.isPrivate,
-        url: input.url,
-        cloneUrl: input.cloneUrl,
-        importStatus: "PENDING",
-      },
-      update: {
-        integrationId: integration.id,
-        projectId: project.id,
-        fullName: input.fullName,
-        name: input.name,
-        owner: input.owner,
-        description: input.description,
-        defaultBranch: input.defaultBranch,
-        language: input.language,
-        topics: input.topics,
-        isPrivate: input.isPrivate,
-        url: input.url,
-        cloneUrl: input.cloneUrl,
-        importStatus: "PENDING",
-      },
-    });
+      if (existingRepo?.projectId && existingRepo?.project) {
+        throw new ConflictError(
+          `Repository "${input.fullName}" has already been imported`
+        );
+      }
 
-    // Store GitHub as a project source
-    await db.projectSource.upsert({
-      where: {
-        projectId_type: {
-          projectId: project.id,
-          type: "GITHUB",
+      // Create the project draft
+      const newProject = await tx.project.create({
+        data: {
+          owner: { connect: { id: session.user.id } },
+          slug,
+          title: input.name,
+          summary: input.description ?? `${input.name} repository`,
+          overview: "",
+          status: "DRAFT",
+          visibility: "PRIVATE",
+          syncStatus: "SYNCING",
         },
-      },
-      create: {
-        projectId: project.id,
-        type: "GITHUB",
-        externalId: String(input.githubId),
-        externalUrl: input.url,
-        syncedAt: new Date(),
-      },
-      update: {
-        externalId: String(input.githubId),
-        externalUrl: input.url,
-        syncedAt: new Date(),
-      },
+      });
+
+      // Update existing orphaned record by primary key or create new record
+      const repoRecord = existingRepo
+        ? await tx.gitHubRepository.update({
+            where: { id: existingRepo.id },
+            data: {
+              integrationId: integration.id,
+              projectId: newProject.id,
+              githubId: input.githubId,
+              fullName: input.fullName,
+              name: input.name,
+              owner: input.owner,
+              description: input.description,
+              defaultBranch: input.defaultBranch,
+              language: input.language,
+              topics: input.topics,
+              isPrivate: input.isPrivate,
+              url: input.url,
+              cloneUrl: input.cloneUrl,
+              importStatus: "PENDING",
+            },
+          })
+        : await tx.gitHubRepository.create({
+            data: {
+              integrationId: integration.id,
+              projectId: newProject.id,
+              githubId: input.githubId,
+              fullName: input.fullName,
+              name: input.name,
+              owner: input.owner,
+              description: input.description,
+              defaultBranch: input.defaultBranch,
+              language: input.language,
+              topics: input.topics,
+              isPrivate: input.isPrivate,
+              url: input.url,
+              cloneUrl: input.cloneUrl,
+              importStatus: "PENDING",
+            },
+          });
+
+      // Store GitHub as a project source
+      await tx.projectSource.upsert({
+        where: {
+          projectId_type: {
+            projectId: newProject.id,
+            type: "GITHUB",
+          },
+        },
+        create: {
+          projectId: newProject.id,
+          type: "GITHUB",
+          externalId: String(input.githubId),
+          externalUrl: input.url,
+          syncedAt: new Date(),
+        },
+        update: {
+          externalId: String(input.githubId),
+          externalUrl: input.url,
+          syncedAt: new Date(),
+        },
+      });
+
+      return { project: newProject, repository: repoRecord };
     });
 
     // Queue the analysis job (with in-process fallback if Redis is offline)
