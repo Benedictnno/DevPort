@@ -49,7 +49,7 @@ export class GroqAdapter implements AIProvider {
     });
 
     try {
-      const fallbackModels = [this.model, "llama-3.1-8b-instant", "llama3-70b-8192"];
+      const fallbackModels = [this.model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"];
       let response = null;
       let lastError: unknown = null;
 
@@ -78,8 +78,14 @@ export class GroqAdapter implements AIProvider {
         } catch (error) {
           lastError = error;
           const msg = error instanceof Error ? error.message : String(error);
-          if (msg.includes("model_not_found") || msg.includes("does not exist")) {
-            logger.warn(`Groq model ${candidateModel} not found, trying fallback...`);
+          if (
+            msg.includes("model_not_found") ||
+            msg.includes("does not exist") ||
+            msg.includes("decommissioned") ||
+            msg.includes("invalid_request_error") ||
+            msg.includes("400")
+          ) {
+            logger.warn(`Groq model ${candidateModel} failed/decommissioned (${msg}), trying fallback...`);
             continue;
           }
           throw error;

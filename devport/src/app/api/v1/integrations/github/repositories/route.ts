@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { toErrorResponse, ConflictError } from "@/shared/errors";
 import { listGitHubRepositories, getGitHubIntegrationStatus, findImportedRepository } from "@/modules/integrations/github/github.service";
@@ -209,9 +209,13 @@ export async function POST(req: NextRequest) {
     // Import worker execution logic
     const { executeRepositoryAnalysis } = await import("@/jobs/repository-analysis/worker");
 
-    // 1. Always execute in-process analysis in background immediately
-    executeRepositoryAnalysis(jobData).catch((err) => {
-      console.error("Immediate repository analysis failed:", err);
+    // 1. Execute in-process analysis via Next.js after() so execution context stays alive
+    after(async () => {
+      try {
+        await executeRepositoryAnalysis(jobData);
+      } catch (err) {
+        console.error("Immediate repository analysis failed:", err);
+      }
     });
 
     // 2. Also push to BullMQ queue for distributed workers if available
