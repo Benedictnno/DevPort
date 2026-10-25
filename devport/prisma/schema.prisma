@@ -358,9 +358,11 @@ model ApiKey {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   name      String
-  keyHash   String @unique // bcrypt hash of the full key
-  keyPrefix String // First 8 chars for display (e.g. "dp_live_")
+  keyHash   String   @unique // bcrypt hash of the full key
+  keyPrefix String   // First 8 chars for display (e.g. "dp_live_")
   scopes    String[] @default(["projects:read"])
+  // Empty array = unrestricted (access all owner projects); non-empty = allowlist of slugs
+  projectSlugs String[] @default([])
 
   lastUsedAt DateTime?
   expiresAt  DateTime?

@@ -78,10 +78,19 @@ describe("Validation Schemas", () => {
   });
 
   describe("createApiKeySchema", () => {
-    it("should accept valid API key input with default scopes", () => {
+    it("should accept valid API key input with default scopes and empty projectSlugs", () => {
       const result = validate(createApiKeySchema, { name: "Portfolio App" });
       expect(result.name).toBe("Portfolio App");
       expect(result.scopes).toEqual(["projects:read"]);
+      expect(result.projectSlugs).toEqual([]);
+    });
+
+    it("should accept custom projectSlugs allowlist", () => {
+      const result = validate(createApiKeySchema, {
+        name: "Restricted App",
+        projectSlugs: ["orchestra", "devport"],
+      });
+      expect(result.projectSlugs).toEqual(["orchestra", "devport"]);
     });
   });
 });

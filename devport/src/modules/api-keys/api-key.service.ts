@@ -8,6 +8,8 @@ export interface ApiKeyDto {
   name: string;
   prefix: string;
   scopes: string[];
+  /** Empty array = unrestricted; non-empty = allowlisted project slugs */
+  projectSlugs: string[];
   lastUsedAt: string | null;
   expiresAt: string | null;
   createdAt: string;
@@ -35,6 +37,7 @@ export async function createApiKey(
       keyHash: hash,
       keyPrefix: prefix,
       scopes: input.scopes ?? ["projects:read"],
+      projectSlugs: input.projectSlugs ?? [],
       expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
     },
   });
@@ -45,6 +48,7 @@ export async function createApiKey(
     name: record.name,
     prefix: record.keyPrefix,
     scopes: record.scopes,
+    projectSlugs: record.projectSlugs,
     lastUsedAt: null,
     expiresAt: record.expiresAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
@@ -65,6 +69,7 @@ export async function listApiKeys(userId: string): Promise<ApiKeyDto[]> {
     name: k.name,
     prefix: k.keyPrefix,
     scopes: k.scopes,
+    projectSlugs: k.projectSlugs,
     lastUsedAt: k.lastUsedAt?.toISOString() ?? null,
     expiresAt: k.expiresAt?.toISOString() ?? null,
     createdAt: k.createdAt.toISOString(),

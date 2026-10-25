@@ -42,8 +42,8 @@ export class ProjectRepository {
   }
 
   async findBySlug(slug: string): Promise<ProjectWithRelations | null> {
-    return db.project.findUnique({
-      where: { slug },
+    return db.project.findFirst({
+      where: { slug: { equals: slug, mode: "insensitive" } },
       include: projectFullInclude,
     });
   }
@@ -53,14 +53,18 @@ export class ProjectRepository {
     ownerId: string
   ): Promise<ProjectWithRelations | null> {
     return db.project.findFirst({
-      where: { slug, ownerId },
+      where: { slug: { equals: slug, mode: "insensitive" }, ownerId },
       include: projectFullInclude,
     });
   }
 
   async findPublicBySlug(slug: string): Promise<ProjectWithRelations | null> {
     return db.project.findFirst({
-      where: { slug, visibility: "PUBLIC", status: "PUBLISHED" },
+      where: {
+        slug: { equals: slug, mode: "insensitive" },
+        visibility: "PUBLIC",
+        status: "PUBLISHED",
+      },
       include: projectFullInclude,
     });
   }
@@ -68,6 +72,24 @@ export class ProjectRepository {
   async listByOwner(ownerId: string): Promise<ProjectSummary[]> {
     return db.project.findMany({
       where: { ownerId },
+      include: projectSummaryInclude,
+      orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
+    });
+  }
+
+  /**
+   * List projects owned by a user, filtered to a specific set of slugs.
+   * Used when an API key has a project allowlist.
+   */
+  async listByOwnerAndSlugs(
+    ownerId: string,
+    slugs: string[]
+  ): Promise<ProjectSummary[]> {
+    return db.project.findMany({
+      where: {
+        ownerId,
+        OR: slugs.map((s) => ({ slug: { equals: s, mode: "insensitive" } })),
+      },
       include: projectSummaryInclude,
       orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
     });

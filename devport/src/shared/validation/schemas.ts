@@ -82,6 +82,13 @@ export const createApiKeySchema = z.object({
     .min(1)
     .optional()
     .default(["projects:read"]),
+  // Optional allowlist of project slugs this key can access.
+  // Empty / omitted means unrestricted (all owner projects).
+  projectSlugs: z
+    .array(z.string().min(1).max(60))
+    .max(50)
+    .optional()
+    .default([]),
   expiresAt: z
     .string()
     .datetime()

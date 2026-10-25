@@ -8,15 +8,20 @@ type RouteParams = { params: Promise<{ slug: string }> };
 
 /**
  * GET /api/v1/public/projects/:slug
- * 
- * Public endpoint — no session required.
- * Accepts optional API key for accessing private project data in future.
+ *
+ * Unauthenticated: returns the project only if it is PUBLIC + PUBLISHED.
+ *
+ * With a valid API key (Bearer token):
+ *   - Returns any project owned by the key's user (public or private).
+ *   - If the key has a projectSlugs allowlist and this slug is NOT in it,
+ *     responds 403 — the key cannot access this project.
+ *   - Key must have the `projects:read` scope.
  */
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
     const { slug } = await params;
 
-    // Check for API key authentication
+    // ── API key authentication ─────────────────────────────────────────────
     const authHeader = req.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const rawKey = authHeader.replace("Bearer ", "");
@@ -32,18 +37,41 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       });
 
       if (apiKey) {
-        // Scope check — key must have projects:read to access project data
+        // Scope check
         if (!apiKey.scopes.includes("projects:read")) {
           return NextResponse.json(
-            { error: { code: "AUTHORIZATION_ERROR", message: "API key lacks the projects:read scope" } },
+            {
+              error: {
+                code: "AUTHORIZATION_ERROR",
+                message: "API key lacks the projects:read scope",
+              },
+            },
             { status: 403 }
           );
         }
 
-        // Update last used timestamp
+        // Project allowlist check — if the key has restrictions, enforce them (case-insensitively)
+        const isAllowed =
+          apiKey.projectSlugs.length === 0 ||
+          apiKey.projectSlugs.some(
+            (s) => s.toLowerCase() === slug.toLowerCase()
+          );
+
+        if (!isAllowed) {
+          return NextResponse.json(
+            {
+              error: {
+                code: "AUTHORIZATION_ERROR",
+                message: "API key does not have access to this project",
+              },
+            },
+            { status: 403 }
+          );
+        }
+
+        // Record usage
         await db.apiKey.update({
           where: { id: apiKey.id },
-          // Only update if still valid (guards against expiry race condition)
           data: { lastUsedAt: new Date() },
         });
 
@@ -53,7 +81,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Unauthenticated — only return public projects
+    // ── Unauthenticated — only return public projects ──────────────────────
     const project = await projectService.getPublicProject(slug);
     return NextResponse.json({ project });
   } catch (error) {

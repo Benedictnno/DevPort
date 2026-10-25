@@ -68,6 +68,23 @@ export async function listPublicProjects(options?: {
 }
 
 /**
+ * List projects owned by a user, filtered by an explicit slug allowlist.
+ * Used when an API key has project-level restrictions.
+ */
+export async function listProjectsByOwnerAndSlugs(
+  ownerId: string,
+  slugs: string[]
+): Promise<ProjectSummaryDto[]> {
+  if (slugs.length === 0) {
+    // No restriction — return all owner projects
+    const projects = await projectRepository.listByOwner(ownerId);
+    return projects.map(toProjectSummaryDto);
+  }
+  const projects = await projectRepository.listByOwnerAndSlugs(ownerId, slugs);
+  return projects.map(toProjectSummaryDto);
+}
+
+/**
  * Create a new project for a user.
  */
 export async function createProject(
